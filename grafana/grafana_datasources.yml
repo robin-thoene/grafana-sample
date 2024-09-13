@@ -1,0 +1,7 @@
+datasources:
+  - name: Jaeger
+    type: jaeger
+    url: http://jaeger:16686
+    access: proxy
+    basicAuth: false
+    readOnly: false

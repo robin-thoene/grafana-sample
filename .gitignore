@@ -1,0 +1,4 @@
+.env
+basicauth_users
+/jaeger/
+/traefik/

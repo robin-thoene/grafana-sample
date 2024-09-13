@@ -1,0 +1,82 @@
+services:
+  # This should proxy all network requests. Other containers should not expose ports themselves.
+  traefik-proxy:
+    container_name: traefik-proxy
+    image: traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.grpc.address=:4317"
+    ports:
+      - 5000:80
+      - 4317:4317
+    volumes:
+      - ./basicauth_users:/basicauth/usersfile
+      - ./traefik/letsencrypt:/letsencrypt
+      - ${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock
+    networks:
+      - proxy
+
+  # Grafana to visualize data from observability containers.
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`localhost`)"
+      - "traefik.http.routers.grafana.entrypoints=web"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    environment:
+      # Disable the default login.
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # Configure Azure AD SSO login.
+      - GF_AUTH_AZUREAD_NAME=Azure AD
+      - GF_AUTH_AZUREAD_ENABLED=true
+      - GF_AUTH_AZUREAD_SCOPES=openid email profile
+      - GF_AUTH_AZUREAD_AUTH_URL=https://login.microsoftonline.com/${GRAFANA_AZURE_AD_TENANT_ID}/oauth2/v2.0/authorize
+      - GF_AUTH_AZUREAD_TOKEN_URL=https://login.microsoftonline.com/${GRAFANA_AZURE_AD_TENANT_ID}/oauth2/v2.0/token
+      - GF_AUTH_AZUREAD_ALLOWED_ORGANIZATIONS=${GRAFANA_AZURE_AD_TENANT_ID}
+      - GF_AUTH_AZUREAD_CLIENT_ID=${GRAFANA_AZURE_AD_CLIENT_ID}
+      - GF_AUTH_AZUREAD_CLIENT_SECRET=${GRAFANA_AZURE_AD_CLIENT_SECRET}
+      # Define the redirect URL after successful login, must match the publicly available URL defined in the proxy.
+      - GF_SERVER_ROOT_URL=http://localhost:5000
+    volumes:
+      - ./grafana/grafana_datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
+    networks:
+      - proxy
+      - grafana
+    depends_on:
+      - traefik-proxy
+
+  # Tracing backend.
+  jaeger:
+    container_name: jaeger
+    image: jaegertracing/all-in-one
+    user: "${UID}:${GID}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jaeger.rule=Host(`localhost`)"
+      - "traefik.http.routers.jaeger.entrypoints=grpc"
+      - "traefik.http.services.jaeger.loadbalancer.server.scheme=h2c"
+      - "traefik.http.services.jaeger.loadbalancer.server.port=4317"
+      - "traefik.http.routers.jaeger.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.usersfile=/basicauth/usersfile"
+    environment:
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false
+      - BADGER_DIRECTORY_KEY=/badger/keys
+      - BADGER_DIRECTORY_VALUE=/badger/values
+      - BADGER_SPAN_STORE_TTL=168h0m0s
+    volumes:
+      - ./jaeger/badger:/badger
+    networks:
+      - proxy
+      - grafana
+    depends_on:
+      - traefik-proxy
+
+networks:
+  proxy: {}
+  grafana: {}
