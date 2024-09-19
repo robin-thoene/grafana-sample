@@ -2,3 +2,6 @@
 basicauth_users
 /jaeger/
 /traefik/
+**/target
+**/bin
+**/obj
