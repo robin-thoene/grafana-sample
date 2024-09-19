@@ -39,6 +39,7 @@ environment files content can be initialized with the following (insert your spe
 GRAFANA_AZURE_AD_TENANT_ID=
 GRAFANA_AZURE_AD_CLIENT_ID=
 GRAFANA_AZURE_AD_CLIENT_SECRET=
+OTEL_EXPORTER_OTLP_TRACES_HEADERS="Authorization=Basic YOUR_VALUE"
 ```
 
 #### Base auth
@@ -64,4 +65,10 @@ To start the sample, be sure you have followed the [prerequisites](### Prerequis
 
 ```shell
 podman-compose -f base_compose.yml up -d
+```
+
+To start a sample application that produces traces:
+
+```shell
+dotnet run --project ./dotnet-api/DotnetApi.csproj
 ```
