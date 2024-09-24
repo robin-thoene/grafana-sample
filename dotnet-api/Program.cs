@@ -25,6 +25,11 @@ builder.Host.UseSerilog((ctx, services, config) =>
             opt.ResourceAttributes.Add("service.name", serviceName);
             opt.Protocol = Serilog.Sinks.OpenTelemetry.OtlpProtocol.Grpc;
             opt.RestrictedToMinimumLevel = LogEventLevel.Warning;
+            var authHeader = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_LOGS_AUTH_HEADER_VALUE");
+            if (!string.IsNullOrEmpty(authHeader))
+            {
+                opt.Headers.Add("Authorization", authHeader);
+            }
         });
     });
 // Add services to the container.

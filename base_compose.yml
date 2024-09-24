@@ -1,5 +1,5 @@
 services:
-  # This should proxy all network requests. Other containers should not expose ports themselves.
+  # This should proxy all network requests. Other containers should not expose ports themselves
   traefik-proxy:
     container_name: traefik-proxy
     image: traefik
@@ -15,10 +15,8 @@ services:
       - ./basicauth_users:/basicauth/usersfile
       - ./traefik/letsencrypt:/letsencrypt
       - ${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock
-    networks:
-      - proxy
 
-  # Grafana to visualize data from observability containers.
+  # Grafana to visualize data from observability containers
   grafana:
     container_name: grafana
     image: grafana/grafana-oss
@@ -28,10 +26,10 @@ services:
       - "traefik.http.routers.grafana.entrypoints=web"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
     environment:
-      # Disable the default login.
+      # Disable the default login
       - GF_AUTH_DISABLE_LOGIN_FORM=true
       - GF_AUTH_ANONYMOUS_ENABLED=false
-      # Configure Azure AD SSO login.
+      # Configure Azure AD SSO login
       - GF_AUTH_AZUREAD_NAME=Azure AD
       - GF_AUTH_AZUREAD_ENABLED=true
       - GF_AUTH_AZUREAD_SCOPES=openid email profile
@@ -40,29 +38,20 @@ services:
       - GF_AUTH_AZUREAD_ALLOWED_ORGANIZATIONS=${GRAFANA_AZURE_AD_TENANT_ID}
       - GF_AUTH_AZUREAD_CLIENT_ID=${GRAFANA_AZURE_AD_CLIENT_ID}
       - GF_AUTH_AZUREAD_CLIENT_SECRET=${GRAFANA_AZURE_AD_CLIENT_SECRET}
-      # Define the redirect URL after successful login, must match the publicly available URL defined in the proxy.
+      # Define the redirect URL after successful login, must match the publicly available URL defined in the proxy
       - GF_SERVER_ROOT_URL=http://localhost:5000
     volumes:
-      - ./grafana/grafana_datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
     networks:
-      - proxy
       - grafana
     depends_on:
       - traefik-proxy
 
-  # Tracing backend.
+  # Tracing backend
   jaeger:
     container_name: jaeger
     image: jaegertracing/all-in-one
     user: "${UID}:${GID}"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jaeger.rule=Host(`localhost`)"
-      - "traefik.http.routers.jaeger.entrypoints=grpc"
-      - "traefik.http.services.jaeger.loadbalancer.server.scheme=h2c"
-      - "traefik.http.services.jaeger.loadbalancer.server.port=4317"
-      - "traefik.http.routers.jaeger.middlewares=auth"
-      - "traefik.http.middlewares.auth.basicauth.usersfile=/basicauth/usersfile"
     environment:
       - SPAN_STORAGE_TYPE=badger
       - BADGER_EPHEMERAL=false
@@ -72,11 +61,44 @@ services:
     volumes:
       - ./jaeger/badger:/badger
     networks:
-      - proxy
+      - otel
       - grafana
     depends_on:
       - traefik-proxy
 
+  # Logs backend
+  loki:
+    container_name: loki
+    image: grafana/loki:3.1.0
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/config.yml:/etc/loki/local-config.yaml
+    networks:
+      - otel
+      - grafana
+
+  # OpenTelemetry collector that will take in OTLP data and forward it to the corresponding backend
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.otel.rule=Host(`localhost`)"
+      - "traefik.http.routers.otel.entrypoints=grpc"
+      - "traefik.http.services.otel.loadbalancer.server.scheme=h2c"
+      - "traefik.http.services.otel.loadbalancer.server.port=4317"
+      - "traefik.http.routers.otel.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.usersfile=/basicauth/usersfile"
+
+    command: "--config=/etc/otel-collector-config.yaml"
+    volumes:
+      - ./otel_collector/config.yml:/etc/otel-collector-config.yaml
+    networks:
+      - otel
+    depends_on:
+      - jaeger
+      - loki
+
 networks:
-  proxy: {}
   grafana: {}
+  otel: {}
