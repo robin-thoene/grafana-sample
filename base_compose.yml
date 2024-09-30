@@ -44,8 +44,6 @@ services:
       - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
     networks:
       - grafana
-    depends_on:
-      - traefik-proxy
 
   # Tracing backend
   jaeger:
@@ -63,8 +61,6 @@ services:
     networks:
       - otel
       - grafana
-    depends_on:
-      - traefik-proxy
 
   # Logs backend
   loki:
